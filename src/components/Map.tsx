@@ -46,6 +46,7 @@ const Map = ({ earthquakes }: MapProps) => {
     place: string;
   }>({ startDate: "", endDate: "", place: "" });
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [applyFilters, setApplyFilters] = useState(false);
   const [distanceStats, setDistanceStats] = useState<DistanceStats[]>([]);
 
   const { sources, layers, earthquakeGeoJSON } = useLayerAndSource(earthquakes);
@@ -106,9 +107,8 @@ const Map = ({ earthquakes }: MapProps) => {
     setDistanceStats(stats);
   }, [isMapLoaded, earthquakes]);
 
-
   // Ajout des sources et des couches
-  useEffect(() => {
+  /* useEffect(() => {
     if (!isMapLoaded) return;
 
     const map = mapRef.current;
@@ -130,43 +130,80 @@ const Map = ({ earthquakes }: MapProps) => {
         }
       });
     }
-  }, [isMapLoaded, sources, layers]);
-  
+  }, [isMapLoaded, sources, layers]);*/
 
-  // Filtre  
+  useEffect(() => {
+    if (!mapContainer.current) return;
 
-const handleApplyFilters = useCallback(() => {
+    const map = mapRef.current;
 
-  const map = mapRef.current;
+    // Check if the map is ready
+    const updateMapSource = () => {
+      if (!map) return;
 
-  if (!map) return;
+      if (map.isStyleLoaded()) {
+        const sourceId = "earthquake";
 
-  const source = map.getSource('earthquake');
-  if (source && source.type === "geojson") {
+        if (map.getSource(sourceId)) {
+          const source = map.getSource(sourceId);
 
-    const featureFilter = earthquakeGeoJSON.features.filter((feature) => {
-      const earthquakeTime = feature.properties?.time.split("T")[0];
+          // Update the source with the new filtered data
+          if (source && source.type === "geojson") {
+            (source as mapboxgl.GeoJSONSource).setData(
+              sources.get(sourceId)!.data
+            );
+            setApplyFilters(false);
+          }
+        } else if (sources.get(sourceId)) {
+          map.addSource(sourceId, sources.get(sourceId)!);
+
+          layers.forEach((layer) => {
+            if (!map.getLayer(layer.id)) {
+              map.addLayer(layer);
+            }
+          });
+        }
+      } else {
+        map.once("styledata", updateMapSource);
+      }
+    };
+
+    updateMapSource();
+
+    setIsMapLoaded(true);
+  }, [sources, layers]);
+
+  // Filtre
+
+  const handleApplyFilters = useCallback(() => {
+    const map = mapRef.current;
+
+    if (!map) return;
+
+    const source = map.getSource("earthquake");
+    if (source && source.type === "geojson") {
+      const featureFilter = earthquakeGeoJSON.features.filter((feature) => {
+        const earthquakeTime = feature.properties?.time.split("T")[0];
 
         return (
           (!filters.startDate || earthquakeTime >= filters.startDate) &&
           (!filters.endDate || earthquakeTime <= filters.endDate)
         );
-      })
+      });
 
       const filteredData: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
+        type: "FeatureCollection",
         features: featureFilter,
         bbox: [-179.9495, -62.134, -3.49, 179.877, 81.9293, 625.963],
       };
 
-
-    source.setData(filteredData);
-    
-  } else {
-    console.log('La source des données est introuvable ou ne supporte pas setData.');
-  }
-}, [earthquakeGeoJSON, filters.endDate, filters.startDate])
-
+      source.setData(filteredData);
+    } else {
+      console.log(
+        "La source des données est introuvable ou ne supporte pas setData."
+      );
+    }
+  }, [earthquakeGeoJSON, filters.endDate, filters.startDate]);
 
   // Gestion des événements de clic pour afficher le popup
   useEffect(() => {
@@ -240,7 +277,9 @@ const handleApplyFilters = useCallback(() => {
       );
 
       if (selectedEarthquake) {
-        const [lng, lat] = selectedEarthquake.coordinates.split(",").map(Number);
+        const [lng, lat] = selectedEarthquake.coordinates
+          .split(",")
+          .map(Number);
         mapRef.current?.flyTo({
           center: [lng, lat],
           essential: true,
@@ -275,7 +314,11 @@ const handleApplyFilters = useCallback(() => {
             <h2 className="mt-8 text-lg text-gray-700 font-bold text-center">
               Filter
             </h2>
-            <PlacesFilter setFilters={setFilters} earthquakesData={earthquakes} onPlaceSelect={handlePlaceSelect} />
+            <PlacesFilter
+              setFilters={setFilters}
+              earthquakesData={earthquakes}
+              onPlaceSelect={handlePlaceSelect}
+            />
             <DateRangeFilter setFilters={setFilters} />
             <button
               className="mt-4 w-[30%] ml-[30%] bottom-[370px] right-5 p-2 bg-gray-900 text-white font-semibold rounded-md focus:ring-2 focus:ring-blue-300"
@@ -286,7 +329,6 @@ const handleApplyFilters = useCallback(() => {
             <div className="bottom-4 right-4  w-full">
               <DistanceChart data={distanceStats} />
             </div>
-            
           </>
         </DrawerComponent>
       </div>
